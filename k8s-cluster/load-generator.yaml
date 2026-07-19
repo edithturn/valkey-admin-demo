@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-generator
+  namespace: demo-cluster
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: load-generator
+  template:
+    metadata:
+      labels:
+        app: load-generator
+    spec:
+      initContainers:
+      - name: seeder
+        image: valkey/valkey:9.1
+        command: ["/bin/bash", "/scripts/seed.sh"]
+        volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+
+      containers:
+      - name: load-generator
+        image: valkey/valkey:9.1
+        command: ["/bin/bash", "/scripts/generate-load.sh"]
+        volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+      volumes:
+      - name: scripts
+        configMap:
+          name: load-generator-scripts
+          defaultMode: 0755
