@@ -4,7 +4,7 @@ A demo showing Valkey Admin connecting to a live Valkey instance running in Kube
 
 ---
 
-## Option A — Kubernetes Cluster Demo (Valkey Operator)
+## Option A:  Kubernetes Cluster Demo (Valkey Operator)
 
 A 3-shard × 2-node Valkey cluster managed by the Valkey Operator, with Valkey Admin deployed inside the cluster.
 
@@ -26,9 +26,9 @@ Verify it's running:
 kubectl get pods -n valkey-operator-system
 ```
 
-> The operator lives in its own namespace (`valkey-operator-system`), separate from the demo's `demo-cluster` namespace. Deleting `demo-cluster` (see Teardown) does **not** remove the operator — you only need to install it once per Kubernetes cluster. If you tear down the whole Kubernetes cluster itself (not just the namespace), you'll need to reinstall the operator before redeploying this demo.
+> The operator lives in its own namespace (`valkey-operator-system`), separate from the demo's `demo-cluster` namespace. Deleting `demo-cluster` (see Teardown) does **not** remove the operator, you only need to install it once per Kubernetes cluster. If you tear down the whole Kubernetes cluster itself (not just the namespace), you'll need to reinstall the operator before redeploying this demo.
 
-### Step 1 — Deploy the Valkey cluster
+### Step 1: Deploy the Valkey cluster
 
 ```bash
 kubectl apply -f k8s-cluster/valkeycluster.yaml
@@ -56,7 +56,7 @@ kubectl exec -n demo-cluster valkey-demo-0-0-0 -c server -- \
 # Expected: cluster_state:ok
 ```
 
-### Step 2 — Deploy Valkey Admin
+### Step 2: Deploy Valkey Admin
 
 ```bash
 kubectl apply -f k8s-cluster/valkey-admin.yaml
@@ -68,7 +68,7 @@ Wait for it to be ready:
 kubectl get pods -n demo-cluster | grep valkey-admin
 ```
 
-### Step 3 — Deploy the load generator
+### Step 3: Deploy the load generator
 
 This seeds the cluster with realistic data (sessions, products, leaderboards, orders) and keeps traffic flowing. The seeding/traffic logic lives in plain shell scripts under `k8s-cluster/scripts/` (not inlined in the YAML), so generate a ConfigMap from them first, then apply the Deployment:
 
@@ -81,11 +81,11 @@ kubectl create configmap load-generator-scripts \
 kubectl apply -f k8s-cluster/load-generator.yaml
 ```
 
-> If you edit `seed.sh` or `generate-load.sh`, re-run the `kubectl create configmap ... | kubectl apply -f -` command above and restart the deployment (`kubectl rollout restart deployment/load-generator -n demo-cluster`) to pick up the change — the ConfigMap doesn't auto-reload into a running pod.
+> If you edit `seed.sh` or `generate-load.sh`, re-run the `kubectl create configmap ... | kubectl apply -f -` command above and restart the deployment (`kubectl rollout restart deployment/load-generator -n demo-cluster`) to pick up the change, the ConfigMap doesn't auto-reload into a running pod.
 
-> **Watch out:** there are two `load-generator.yaml` files in this repo — `k8s-cluster/load-generator.yaml` (this one, for the Operator-managed cluster demo, connects to `valkey-demo` in cluster mode) and `k8s/load-generator.yaml` (for the standalone Option B Docker demo, connects to a plain `valkey` host). Applying the wrong one into `demo-cluster` will silently hang forever waiting to ping a host (`valkey`) that doesn't exist there, and nothing gets seeded. Always use `k8s-cluster/load-generator.yaml` for this option.
+> **Watch out:** there are two `load-generator.yaml` files in this repo, `k8s-cluster/load-generator.yaml` (this one, for the Operator-managed cluster demo, connects to `valkey-demo` in cluster mode) and `k8s/load-generator.yaml` (for the standalone Option B Docker demo, connects to a plain `valkey` host). Applying the wrong one into `demo-cluster` will silently hang forever waiting to ping a host (`valkey`) that doesn't exist there, and nothing gets seeded. Always use `k8s-cluster/load-generator.yaml` for this option.
 
-### Step 4 — Port-forward Valkey Admin
+### Step 4: Port-forward Valkey Admin
 
 ```bash
 kubectl port-forward svc/valkey-admin 8080:8080 -n demo-cluster
@@ -93,11 +93,11 @@ kubectl port-forward svc/valkey-admin 8080:8080 -n demo-cluster
 
 Open **http://localhost:8080** in your browser.
 
-### Step 5 — Connect to the cluster
+### Step 5: Connect to the cluster
 
 Valkey Admin opens with an **Add Connection** screen.
 
-You need the IP of a running Valkey pod — get it with:
+You need the IP of a running Valkey pod, get it with:
 
 ```bash
 kubectl get pods -n demo-cluster -o wide | grep valkey-demo
@@ -117,17 +117,17 @@ Click **Connect**. Valkey Admin will auto-discover all 6 nodes.
 
 ### What you will see
 
-- **Cluster Topology** — 3 primaries + 3 replicas, memory and key count per node
-- **Dashboard** — live commands/sec, memory, connected clients
-- **Key Browser** — thousands of pre-seeded keys (sessions, products, leaderboards)
-- **Hot Keys** — most-accessed keys from the load generator
-- **Command Logs** — real-time command stream
+- **Cluster Topology**: 3 primaries + 3 replicas, memory and key count per node
+- **Dashboard**: live commands/sec, memory, connected clients
+- **Key Browser**: thousands of pre-seeded keys (sessions, products, leaderboards)
+- **Hot Keys**: most-accessed keys from the load generator
+- **Command Logs** : real-time command stream
 
 ### Known limitations (Valkey Operator, current version)
 
-This is not a production-ready deployment pattern — it's a demo of Valkey Admin against a real Operator-managed cluster. Straight from the operator's own docs:
+This is not a production-ready deployment pattern, it's a demo of Valkey Admin against a real Operator-managed cluster. Straight from the operator's own docs:
 
-- **No operator-managed external access (LoadBalancer/Ingress)** — this is why we connect Valkey Admin via a direct pod IP instead of a stable endpoint. Pod IPs change on every restart/reschedule, so you'll need to re-grab the IP each time you redeploy.
+- **No operator-managed external access (LoadBalancer/Ingress)**, this is why we connect Valkey Admin via a direct pod IP instead of a stable endpoint. Pod IPs change on every restart/reschedule, so you'll need to re-grab the IP each time you redeploy.
 - No cert-manager integration (manual TLS Secret only)
 - No module support
 - No backup/restore
@@ -135,9 +135,9 @@ This is not a production-ready deployment pattern — it's a demo of Valkey Admi
 - API is `v1alpha1` and may change in future releases
 - Cluster mode only (no standalone or sentinel)
 
-Separately (not an operator limitation, still unresolved on our side): the metrics sidecar/exporter is not working yet — needs further investigation into the operator's full CRD reference to see if there's a metrics field we're missing.
+Separately (not an operator limitation, still unresolved on our side): the metrics sidecar/exporter is not working yet, needs further investigation into the operator's full CRD reference to see if there's a metrics field we're missing.
 
-For a real deployment, Valkey Admin should run outside the database's namespace/infra entirely, reached through a stable endpoint with network policy restricting direct DB access — none of which this demo sets up, by design, to keep it simple.
+For a real deployment, Valkey Admin should run outside the database's namespace/infra entirely, reached through a stable endpoint with network policy restricting direct DB access, none of which this demo sets up, by design, to keep it simple.
 
 ### Teardown
 
@@ -145,11 +145,11 @@ For a real deployment, Valkey Admin should run outside the database's namespace/
 kubectl delete namespace demo-cluster
 ```
 
-This removes the cluster, Valkey Admin, and the load generator, but leaves the Valkey Operator itself untouched (it lives in `valkey-operator-system`, not `demo-cluster`) — you won't need to reinstall it before redeploying this demo again.
+This removes the cluster, Valkey Admin, and the load generator, but leaves the Valkey Operator itself untouched (it lives in `valkey-operator-system`, not `demo-cluster`), you won't need to reinstall it before redeploying this demo again.
 
 ---
 
-## Option B — Standalone Docker Demo
+## Option B:  Standalone Docker Demo
 
 A single Valkey instance with Valkey Admin running via Docker Compose.
 
