@@ -135,7 +135,7 @@ This is not a production-ready deployment pattern, it's a demo of Valkey Admin a
 - API is `v1alpha1` and may change in future releases
 - Cluster mode only (no standalone or sentinel)
 
-Separately (not an operator limitation, still unresolved on our side): the metrics sidecar/exporter is not working yet, needs further investigation into the operator's full CRD reference to see if there's a metrics field we're missing.
+Separately: we haven't verified whether the metrics-exporter sidecar (Prometheus-format metrics on port 9121, meant for external scraping) is actually working, this is distinct from Valkey Admin's own Dashboard, which gets its metrics directly from the cluster and is confirmed working. If you plan to hook this cluster up to Prometheus/Grafana, verify the sidecar independently (e.g. kubectl exec into a pod's metrics-exporter container and curl localhost:9121/metrics) before assuming it's ready.
 
 For a real deployment, Valkey Admin should run outside the database's namespace/infra entirely, reached through a stable endpoint with network policy restricting direct DB access, none of which this demo sets up, by design, to keep it simple.
 
