@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: valkey-admin
-        image: valkey/valkey-admin:latest
+        image: valkey/valkey-admin:edge
         env:
         - name: NODE_ENV
           value: production

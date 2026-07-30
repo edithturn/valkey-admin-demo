@@ -1,0 +1,230 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-generator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: load-generator
+  template:
+    metadata:
+      labels:
+        app: load-generator
+    spec:
+      initContainers:
+      - name: seeder
+        image: valkey/valkey:9.1
+        command:
+        - /bin/bash
+        - -c
+        - |
+          until valkey-cli -h valkey -p 6379 ping; do sleep 2; done
+          echo "==> Seeding Valkey with realistic dataset..."
+
+          # --- 3000 user sessions (batched, single connection) ---
+          {
+            for i in $(seq 1 3000); do
+              sid=$(printf '%016x%016x' $((i * 6364136223846793005)) $((RANDOM * 65536 + RANDOM)))
+              uid=$((RANDOM % 50000 + 1))
+              ttl=$((RANDOM % 7200 + 300))
+              echo "HSET session:$sid user_id $uid role user created_at $((RANDOM % 86400)) ip 10.$((RANDOM%255)).$((RANDOM%255)).$((RANDOM%255))"
+              echo "EXPIRE session:$sid $ttl"
+            done
+          } | valkey-cli -h valkey -p 6379 > /dev/null
+          echo "  sessions done"
+
+          # --- 500 product entries ---
+          {
+            for i in $(seq 1 500); do
+              echo "HSET product:$i name Product-$i price $((RANDOM % 10000 + 99)) stock $((RANDOM % 500 + 1)) views $((RANDOM % 50000 + 100)) category $((RANDOM % 20 + 1)) rating $((RANDOM % 50 + 10))"
+            done
+          } | valkey-cli -h valkey -p 6379 > /dev/null
+          echo "  products done"
+
+          # --- 1000 user profile hashes ---
+          {
+            for i in $(seq 1 1000); do
+              echo "HSET user:$i name User-$i email user$i@example.com plan $((RANDOM % 3)) orders $((RANDOM % 200)) joined $((RANDOM % 86400 * 365))"
+            done
+          } | valkey-cli -h valkey -p 6379 > /dev/null
+          echo "  user profiles done"
+
+          # --- 200 cache entries (simulate app-level cache) ---
+          {
+            for i in $(seq 1 200); do
+              echo "SET cache:query:$i result-payload-$i EX $((RANDOM % 3600 + 60))"
+            done
+            for i in $(seq 1 100); do
+              echo "SET cache:page:$i rendered-html-$i EX $((RANDOM % 600 + 60))"
+            done
+          } | valkey-cli -h valkey -p 6379 > /dev/null
+          echo "  cache keys done"
+
+          # --- leaderboard ZSET (10000 members) ---
+          {
+            for i in $(seq 1 10000); do
+              echo "ZADD leaderboard $((RANDOM % 1000000 + 1)) user:$i"
+            done
+          } | valkey-cli -h valkey -p 6379 > /dev/null
+          echo "  leaderboard done"
+
+          # --- 500 pending orders in queue + individual order records ---
+          {
+            for i in $(seq 1 500); do
+              echo "LPUSH orders:pending order:$i"
+              echo "HSET order:$i user_id $((RANDOM % 50000 + 1)) total $((RANDOM % 50000 + 500)) items $((RANDOM % 10 + 1)) status pending"
+            done
+          } | valkey-cli -h valkey -p 6379 > /dev/null
+          echo "  orders done"
+
+          # --- page view counters ---
+          {
+            for path in root products checkout account search cart api_items api_orders blog docs pricing login signup; do
+              echo "SET stats:pageviews:$path $((RANDOM % 500000 + 10000))"
+            done
+            echo "SET stats:pageviews $((RANDOM % 5000000 + 100000))"
+            echo "SET stats:dau $((RANDOM % 50000 + 5000))"
+            echo "SET stats:mau $((RANDOM % 500000 + 50000))"
+            echo "SET stats:revenue_today $((RANDOM % 100000 + 10000))"
+          } | valkey-cli -h valkey -p 6379 > /dev/null
+          echo "  stats done"
+
+          # --- 300 rate-limit keys ---
+          {
+            for i in $(seq 1 300); do
+              echo "SET ratelimit:10.$((RANDOM%255)).$((RANDOM%255)).$i $((RANDOM % 100 + 1)) EX $((RANDOM % 60 + 10))"
+            done
+          } | valkey-cli -h valkey -p 6379 > /dev/null
+          echo "  rate limits done"
+
+          # --- feature flags ---
+          {
+            echo "HSET config:features dark_mode 1 beta_checkout 0 new_search 1 ai_recommendations 1 loyalty_program 0"
+            echo "HSET config:limits api_rate 1000 max_sessions 10 upload_size_mb 50"
+          } | valkey-cli -h valkey -p 6379 > /dev/null
+
+          # --- 24h hourly aggregates ---
+          {
+            now=$(date +%s)
+            for i in $(seq 23 -1 0); do
+              ts=$(( now - i * 3600 ))
+              echo "HSET agg:hourly:$ts orders $((RANDOM % 800 + 200)) revenue $((RANDOM % 100000 + 10000)) users $((RANDOM % 5000 + 500)) errors $((RANDOM % 20))"
+            done
+          } | valkey-cli -h valkey -p 6379 > /dev/null
+          echo "  aggregates done"
+
+          # --- enable LFU for hot key tracking ---
+          valkey-cli -h valkey -p 6379 CONFIG SET maxmemory-policy allkeys-lfu
+          echo "  LFU policy set"
+
+          echo "==> Seed complete. Total keys: $(valkey-cli -h valkey -p 6379 DBSIZE)"
+
+      containers:
+      - name: load-generator
+        image: valkey/valkey:9.1
+        command:
+        - /bin/bash
+        - -c
+        - |
+          echo "Load generator started."
+
+          # Worker A: session churn (50ms)
+          (
+            i=100000
+            while true; do
+              sid=$(printf '%016x%016x' $((i * 6364136223846793005)) $((RANDOM * 65536 + RANDOM)))
+              uid=$((RANDOM % 50000 + 1))
+              {
+                echo "HSET session:$sid user_id $uid role user created_at $(date +%s) ip 10.$((RANDOM%255)).$((RANDOM%255)).$((RANDOM%255))"
+                echo "EXPIRE session:$sid $((RANDOM % 3600 + 300))"
+              } | valkey-cli -h valkey -p 6379 > /dev/null
+              i=$((i + 1))
+              sleep 0.05
+            done
+          ) &
+
+          # Worker B: product views + leaderboard + pageviews (100ms)
+          (
+            while true; do
+              {
+                echo "HINCRBY product:$((RANDOM % 500 + 1)) views 1"
+                echo "ZINCRBY leaderboard $((RANDOM % 50 + 1)) user:$((RANDOM % 10000 + 1))"
+                echo "INCR stats:pageviews"
+                echo "INCR stats:pageviews:products"
+              } | valkey-cli -h valkey -p 6379 > /dev/null
+              sleep 0.1
+            done
+          ) &
+
+          # Worker C: order queue push/pop (200ms)
+          (
+            i=50000
+            while true; do
+              {
+                echo "LPUSH orders:pending order:$i"
+                echo "HSET order:$i user_id $((RANDOM % 50000 + 1)) total $((RANDOM % 50000 + 500)) status pending"
+                echo "RPOP orders:pending"
+                echo "RPOP orders:pending"
+              } | valkey-cli -h valkey -p 6379 > /dev/null
+              i=$((i + 1))
+              sleep 0.2
+            done
+          ) &
+
+          # Worker D: cache churn — set + expire (150ms)
+          (
+            i=10000
+            while true; do
+              {
+                echo "SET cache:query:$i result-$i EX $((RANDOM % 300 + 30))"
+                echo "SET ratelimit:10.$((RANDOM%255)).$((RANDOM%255)).$((RANDOM%255)) $((RANDOM%100+1)) EX 60"
+              } | valkey-cli -h valkey -p 6379 > /dev/null
+              i=$((i + 1))
+              sleep 0.15
+            done
+          ) &
+
+          # Worker E: read-heavy burst (30ms) — simulates cache hits
+          (
+            while true; do
+              {
+                echo "HGETALL product:$((RANDOM % 500 + 1))"
+                echo "ZRANGE leaderboard 0 9 WITHSCORES"
+                echo "GET stats:pageviews"
+                echo "HGETALL user:$((RANDOM % 1000 + 1))"
+              } | valkey-cli -h valkey -p 6379 > /dev/null
+              sleep 0.03
+            done
+          ) &
+
+          # Worker G: popular item bursts (10ms) — creates clear hot keys for demo
+          (
+            while true; do
+              {
+                echo "HGETALL product:1"
+                echo "HGETALL product:2"
+                echo "HGETALL product:3"
+                echo "GET stats:pageviews"
+                echo "ZRANGE leaderboard 0 4 WITHSCORES"
+                echo "GET stats:dau"
+              } | valkey-cli -h valkey -p 6379 > /dev/null
+              sleep 0.01
+            done
+          ) &
+
+          # Worker F: hourly aggregate updates (60s)
+          (
+            while true; do
+              ts=$(date +%s)
+              hour=$(( ts - ts % 3600 ))
+              {
+                echo "HINCRBY agg:hourly:$hour orders 1"
+                echo "HINCRBY agg:hourly:$hour revenue $((RANDOM % 500 + 10))"
+                echo "HINCRBY agg:hourly:$hour users $((RANDOM % 5 + 1))"
+              } | valkey-cli -h valkey -p 6379 > /dev/null
+              sleep 60
+            done
+          ) &
+
+          wait

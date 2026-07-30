@@ -12,7 +12,7 @@ A 3-shard × 2-node Valkey cluster managed by the Valkey Operator, with Valkey A
 
 - A running Kubernetes cluster (v1.31+) with `kubectl` configured
 - Helm 3
-- [Valkey Operator](https://github.com/valkey-io/valkey-operator) installed in the cluster — install it with:
+- [Valkey Operator](https://github.com/valkey-io/valkey-operator) installed in the cluster, install it with:
 
 ```bash
 helm repo add valkey https://valkey.io/valkey-helm
@@ -26,7 +26,7 @@ Verify it's running:
 kubectl get pods -n valkey-operator-system
 ```
 
-> The operator lives in its own namespace (`valkey-operator-system`), separate from the demo's `demo-cluster` namespace. Deleting `demo-cluster` (see Teardown) does **not** remove the operator, you only need to install it once per Kubernetes cluster. If you tear down the whole Kubernetes cluster itself (not just the namespace), you'll need to reinstall the operator before redeploying this demo.
+> The operator lives in its own namespace (`valkey-operator-system`), separate from the demo's `demo-cluster` namespace.
 
 ### Step 1: Deploy the Valkey cluster
 
@@ -57,6 +57,8 @@ kubectl exec -n demo-cluster valkey-demo-0-0-0 -c server -- \
 ```
 
 ### Step 2: Deploy Valkey Admin
+
+> **Note:** The `demo-cluster` namespace is created by Step 1. If you skip it or haven't deployed the Valkey cluster yet, this command will fail with `namespaces "demo-cluster" not found`.
 
 ```bash
 kubectl apply -f k8s-cluster/valkey-admin.yaml
