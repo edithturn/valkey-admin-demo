@@ -82,7 +82,7 @@ echo "Load generator started."
     {
       echo "SET cache:query:$i result-$i EX $((RANDOM % 300 + 30))"
     } | valkey-cli -c -h valkey-demo -p 6379 > /dev/null
-    i=$((i + 1))
+    i=$(( (i + 1 - 10000) % 2000 + 10000 ))
     sleep 0.15
   done
 ) &
@@ -96,6 +96,28 @@ echo "Load generator started."
       echo "GET stats:pageviews"
     } | valkey-cli -c -h valkey-demo -p 6379 > /dev/null
     sleep 0.03
+  done
+) &
+
+# Worker I: game leaderboard reads (150ms) — drives frequency on leaderboard:game:* keys
+(
+  while true; do
+    g=$((RANDOM % 10))
+    echo "ZRANGE leaderboard:game:$g 0 9 WITHSCORES" \
+      | valkey-cli -c -h valkey-demo -p 6379 > /dev/null
+    sleep 0.15
+  done
+) &
+
+# Worker J: queue worker churn (180ms) — push + pop to drive frequency on queue:worker:* keys
+(
+  while true; do
+    w=$((RANDOM % 20))
+    {
+      echo "RPUSH queue:worker:$w task:$((RANDOM % 10000)):payload-$((RANDOM % 999))"
+      echo "LPOP queue:worker:$w"
+    } | valkey-cli -c -h valkey-demo -p 6379 > /dev/null
+    sleep 0.18
   done
 ) &
 

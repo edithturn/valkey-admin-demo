@@ -17,6 +17,7 @@ A 3-shard × 2-node Valkey cluster managed by the Valkey Operator, with Valkey A
 ```bash
 helm repo add valkey https://valkey.io/valkey-helm
 helm repo update
+helm search repo valkey
 helm install valkey-operator valkey/valkey-operator -n valkey-operator-system --create-namespace
 ```
 
@@ -24,50 +25,59 @@ Verify it's running:
 
 ```bash
 kubectl get pods -n valkey-operator-system
+# Output
+NAME                               READY   STATUS    RESTARTS   AGE
+valkey-operator-78f45b6f49-2dljp   1/1     Running   0          67s
 ```
 
-> The operator lives in its own namespace (`valkey-operator-system`), separate from the demo's `demo-cluster` namespace.
+> The operator lives in its own namespace (`valkey-operator-system`).
 
 ### Step 1: Deploy the Valkey cluster
 
 ```bash
+
+# This yaml created the `demo-cluster` namespace and Valkey cluster
 kubectl apply -f k8s-cluster/valkeycluster.yaml
-```
 
-Wait for all 6 pods to be `2/2 Running`:
-
-```bash
+# Wait for all 6 pods to be `2/2 Running`:
 kubectl get pods -n demo-cluster -w
-```
 
-Verify the cluster formed correctly. You can check the CR's own status:
+# Output
+NAME                READY   STATUS    RESTARTS   AGE
+valkey-demo-0-0-0   2/2     Running   0          36s
+valkey-demo-0-1-0   2/2     Running   0          36s
+valkey-demo-1-0-0   2/2     Running   0          36s
+valkey-demo-1-1-0   2/2     Running   0          36s
+valkey-demo-2-0-0   2/2     Running   0          35s
+valkey-demo-2-1-0   2/2     Running   0          35s
 
-```bash
-kubectl get valkeycluster -n demo-cluster -w
-# Expected: STATE Ready, REASON ClusterHealthy
-```
+# Verify the cluster formed correctly. You can check the CR's own status:
+kubectl get valkeycluster -n demo-cluster
 
-Or check cluster state directly on a node:
+# Output
+NAME   STATE   REASON           AGE
+demo   Ready   ClusterHealthy   88s
 
-```bash
+# Or check cluster state directly on a node:
 kubectl exec -n demo-cluster valkey-demo-0-0-0 -c server -- \
   sh -c "unset VALKEYCLI_AUTH && valkey-cli --user valkey-admin -a '' CLUSTER INFO" \
   2>&1 | grep cluster_state
-# Expected: cluster_state:ok
+
+# Output
+cluster_state:ok
 ```
 
 ### Step 2: Deploy Valkey Admin
 
-> **Note:** The `demo-cluster` namespace is created by Step 1. If you skip it or haven't deployed the Valkey cluster yet, this command will fail with `namespaces "demo-cluster" not found`.
-
 ```bash
+# This yaml will install valkey-admin in `demo-cluster` namespace 
 kubectl apply -f k8s-cluster/valkey-admin.yaml
-```
 
-Wait for it to be ready:
-
-```bash
+# Wait for it to be ready:
 kubectl get pods -n demo-cluster | grep valkey-admin
+
+# Output
+valkey-admin-6777cf4bcf-9wpxx   1/1     Running   0          29s
 ```
 
 ### Step 3: Deploy the load generator
@@ -80,6 +90,13 @@ kubectl create configmap load-generator-scripts \
   --from-file=k8s-cluster/scripts/generate-load.sh \
   -n demo-cluster --dry-run=client -o yaml | kubectl apply -f -
 
+```
+```bash
+kubectl apply -f k8s-cluster/load-generator.yaml
+```
+
+To watch the seed progress
+```bash
 kubectl apply -f k8s-cluster/load-generator.yaml
 ```
 
@@ -90,10 +107,13 @@ kubectl apply -f k8s-cluster/load-generator.yaml
 ### Step 4: Port-forward Valkey Admin
 
 ```bash
+# The Valkey Admin pod runs inside the cluster and its port is not accessible from outside. kubectl port-forward creates a temporary tunnel so your local browser can reach it at http://localhost:8080.
 kubectl port-forward svc/valkey-admin 8080:8080 -n demo-cluster
 ```
 
 Open **http://localhost:8080** in your browser.
+
+[Insert Image Here]
 
 ### Step 5: Connect to the cluster
 
@@ -105,7 +125,7 @@ You need the IP of a running Valkey pod, get it with:
 kubectl get pods -n demo-cluster -o wide | grep valkey-demo
 ```
 
-Pick any primary pod IP (e.g. `10.42.2.42`) and fill in:
+Pick any primary pod IP and fill in:
 
 - **Host:** `<pod-ip>` (e.g. `10.42.2.42`)
 - **Port:** `6379`
@@ -116,6 +136,10 @@ Pick any primary pod IP (e.g. `10.42.2.42`) and fill in:
 Click **Connect**. Valkey Admin will auto-discover all 6 nodes.
 
 > **Note:** The Valkey Operator only exposes a headless service. You must connect via a direct pod IP — the headless DNS name causes connection routing issues with the Glide cluster client.
+> **Note:** The pod naming convention tells you: valkey-demo-{shard}-{role}-{index} — the middle number is the role, where 0 = primary and 1 = replica. So from your output, the primaries are: 
+  - valkey-demo-0-**0**-0 → 10.42.2.3
+  - valkey-demo-1-**0**-0 → 10.42.2.4
+  - valkey-demo-2-**0**-0 → 10.42.1.4
 
 ### What you will see
 
@@ -125,21 +149,6 @@ Click **Connect**. Valkey Admin will auto-discover all 6 nodes.
 - **Hot Keys**: most-accessed keys from the load generator
 - **Command Logs** : real-time command stream
 
-### Known limitations (Valkey Operator, current version)
-
-This is not a production-ready deployment pattern, it's a demo of Valkey Admin against a real Operator-managed cluster. Straight from the operator's own docs:
-
-- **No operator-managed external access (LoadBalancer/Ingress)**, this is why we connect Valkey Admin via a direct pod IP instead of a stable endpoint. Pod IPs change on every restart/reschedule, so you'll need to re-grab the IP each time you redeploy.
-- No cert-manager integration (manual TLS Secret only)
-- No module support
-- No backup/restore
-- No default shard-aware anti-affinity (must configure Kubernetes affinity rules yourself)
-- API is `v1alpha1` and may change in future releases
-- Cluster mode only (no standalone or sentinel)
-
-Separately: we haven't verified whether the metrics-exporter sidecar (Prometheus-format metrics on port 9121, meant for external scraping) is actually working, this is distinct from Valkey Admin's own Dashboard, which gets its metrics directly from the cluster and is confirmed working. If you plan to hook this cluster up to Prometheus/Grafana, verify the sidecar independently (e.g. kubectl exec into a pod's metrics-exporter container and curl localhost:9121/metrics) before assuming it's ready.
-
-For a real deployment, Valkey Admin should run outside the database's namespace/infra entirely, reached through a stable endpoint with network policy restricting direct DB access, none of which this demo sets up, by design, to keep it simple.
 
 ### Teardown
 
@@ -163,7 +172,7 @@ A single Valkey instance with Valkey Admin running via Docker Compose.
 ### Step 1 — Deploy Valkey to Kubernetes
 
 ```bash
-./setup.sh
+./k8s-valkey-standalone/setup.sh
 ```
 
 ### Step 2 — Forward the Valkey port
@@ -177,7 +186,7 @@ Leave this running.
 ### Step 3 — Start Valkey Admin
 
 ```bash
-docker compose up -d
+docker compose -f k8s-valkey-standalone/docker-compose.yml up -d
 ```
 
 Open **http://localhost:8080**.
@@ -194,7 +203,7 @@ Click **Connect**.
 
 ```bash
 kubectl delete namespace demo
-docker compose down
+docker compose -f k8s-valkey-standalone/docker-compose.yml down
 ```
 
 ---

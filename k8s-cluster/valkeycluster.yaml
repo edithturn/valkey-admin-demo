@@ -13,6 +13,9 @@ spec:
   replicas: 1
   image: valkey/valkey:9.1
   workloadType: StatefulSet
+  config:
+    cluster-databases: "16"
+    maxmemory-policy: allkeys-lfu
   users:
     - name: valkey-admin
       enabled: true
