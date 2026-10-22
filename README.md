@@ -91,10 +91,6 @@ kubectl create configmap load-generator-scripts \
   -n demo-cluster --dry-run=client -o yaml | kubectl apply -f -
 
 ```
-```bash
-kubectl apply -f k8s-cluster/load-generator.yaml
-```
-
 To watch the seed progress
 ```bash
 kubectl apply -f k8s-cluster/load-generator.yaml
