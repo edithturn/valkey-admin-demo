@@ -145,6 +145,18 @@ Click **Connect**. Valkey Admin will auto-discover all 6 nodes.
 - **Hot Keys**: most-accessed keys from the load generator
 - **Command Logs** : real-time command stream
 
+### Optional: Generate historical metrics data (Last 30 Days)
+
+Valkey Admin 1.3 supports viewing up to 30 days of CPU and memory metrics. Since real data takes weeks to accumulate, you can backfill synthetic historical data to demo this feature immediately.
+
+See [metrics-backfill/README.md](metrics-backfill/README.md) for full instructions. Quick start:
+
+```bash
+# After connecting to the cluster in the UI (Step 5):
+./metrics-backfill/backfill.sh 45
+```
+
+This generates 45 days of data — 30 days visible in the chart plus 15 days outside the retention window — and restarts Valkey Admin automatically.
 
 ### Teardown
 

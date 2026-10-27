@@ -32,6 +32,9 @@ spec:
         ports:
         - containerPort: 8080
           name: http
+        volumeMounts:
+        - name: data
+          mountPath: /app/apps/server/data
         readinessProbe:
           httpGet:
             path: /
@@ -44,6 +47,9 @@ spec:
             port: http
           initialDelaySeconds: 15
           periodSeconds: 20
+      volumes:
+      - name: data
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
